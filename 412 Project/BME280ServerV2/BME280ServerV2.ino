@@ -6,19 +6,20 @@
 #include <map>
 #include <vector>
 #include <Arduino_JSON.h>
+#include "esp_system.h"
 
 Adafruit_BME280 bme;
 WebServer server(80);
 
-const char* ssid = "Fios-TqX4G";
-const char* password = "boa65waver43dame";
+// Connecting to an access point
+const char* ssid = "Dep";
+const char* password = "34181280";
 
-// Counter for incoming requests
-unsigned long requestCounter = 0;
-
-// Cooldown period in milliseconds
-const unsigned long COOLDOWN_PERIOD = 1000;
+// To track each IP request time
 std::map<String, unsigned long> lastRequestTime;
+
+unsigned long previousMillis = 0; // Store the last time the function was executed
+const unsigned long interval = 2000; // Interval in milliseconds (2 seconds)
 
 // Struct for storing request log details
 struct RequestLog {
@@ -54,12 +55,25 @@ void setup() {
 
     Serial.println(F("BME280 sensor initialized successfully."));
 
+    unsigned long startAttemptTime = millis();  // Record the time when we start trying to connect
+    unsigned long timeout = 15000;  // 15 seconds timeout
+
     // Connect to Wi-Fi
     WiFi.begin(ssid, password);
+    char result[80];  // Make sure the buffer is large enough
+    snprintf(result, sizeof(result), "Attempting to connect to SSID: %s\n", ssid);
+    Serial.println(result);
+    Serial.print("Connecting.....");
+
     while (WiFi.status() != WL_CONNECTED) {
+        if (millis() - startAttemptTime >= timeout) {
+            Serial.println("\nFailed to connect to Wi-Fi after 15 seconds.");
+            return;  // Exit setup function if the connection attempt times out
+        }
         delay(500);
-        Serial.print("...");
+        Serial.print(".");
     }
+
     Serial.println("\nWiFi connected.");
     Serial.print("ESP32 IP Address: ");
     Serial.println(WiFi.localIP());
@@ -67,13 +81,50 @@ void setup() {
     // Set up HTTP server routes
     server.on("/", handleRoot);
     server.on("/data", handleData);
-    server.on("/logs", handleLogs); // New route for request logs
+    server.on("/logs", handleLogs);
+    server.on("/cpudata", handleCpuData);
     server.begin();
     Serial.println("HTTP server started.");
 }
 
 void loop() {
+    unsigned long currentMillis = millis();
     server.handleClient();
+
+    // Cpu data for benchmarking runs every 2 seconds
+    if(currentMillis - previousMillis >= interval){
+      previousMillis = currentMillis;
+      handleCpuData();
+    }
+}
+
+void handleCpuData(){
+    logRequest();
+
+    // Get the current free heap memory
+    unsigned long freeHeap = ESP.getFreeHeap();
+
+    // Create a JSON object with only the freeHeap data
+    String json = "{";
+    json += "\"freeHeap\":" + String(freeHeap);
+    json += "}";
+
+    // Send the data to the Flask server
+    WiFiClient client;
+    if (client.connect("192.168.1.245", 5000)) {  // Replace with your Flask server's IP address
+        client.println("POST /receive_data HTTP/1.1");
+        client.println("Host: 192.168.1.245");
+        client.println("Content-Type: application/json");
+        client.print("Content-Length: ");
+        client.println(json.length());
+        client.println();
+        client.print(json);
+
+        client.stop();
+    }
+    
+    // Respond back to the client (optional)
+    server.send(200, "application/json", json);
 }
 
 // Log client request with details
