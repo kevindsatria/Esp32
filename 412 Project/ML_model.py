@@ -23,8 +23,8 @@ print(scaled_features[:5])  # Print the first 5 rows
 print("Means: ", scaled_features.mean(axis=0))  # Should be close to 0
 print("Standard deviations: ", scaled_features.std(axis=0))  # Should be close to 1
 
-# Perform K-means clustering with k=8
-kmeans = KMeans(n_clusters=6, init='k-means++', max_iter=300, n_init=10, random_state=42)
+# Perform K-means clustering with k=3
+kmeans = KMeans(n_clusters=3, init='k-means++', max_iter=300, n_init=10, random_state=42)
 kmeans.fit(scaled_features)
 
 # Add the cluster labels to the original DataFrame
